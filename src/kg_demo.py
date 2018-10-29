@@ -7,7 +7,7 @@ from src.get_info import *
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
-    "Authorization": "token 8403ca63eeb414e5239b23ed72076c3a3dd86680"
+    "Authorization": "token ff881363e6d18be63c6ae6de7d39a638facc5292"
 }
 numpy_url = "https://api.github.com/orgs/numpy"
 
@@ -35,25 +35,42 @@ if __name__ == '__main__':
     numpy_properties["language"] = Counter(language).most_common()[0][0]
 
     # 建立numpy结点
-    numpy_node = py2neo.Node("ORGANIZATION", **numpy_properties)
+    info = numpy_properties.copy()
+    info.update(numpy_relationships)
+    numpy_node = py2neo.Node("ORGANIZATION", **info)
     tx.create(numpy_node)
 
     # 获取成员信息并建立结点
     numpy_members_info = requests.get(numpy_relationships["members_url"], headers=headers).json()
+
     member_urls = org_members(numpy_members_info)
     for url in member_urls:
         member_info = requests.get(url, headers=headers).json()
         properties, relationships = get_developer_info(member_info)
-        member_node = py2neo.Node("DEVELOPER", **properties)
+
+        # 建立结点
+        info = properties.copy()
+        info.update(relationships)
+        member_node = py2neo.Node("DEVELOPER", **info)
         tx.create(member_node)
-        rel = py2neo.Relationship(numpy_node, "IS_MADE_UP_OF", member_node)
-        tx.create(rel)
+
+        # 建立关系
+        rel1 = py2neo.Relationship(numpy_node, "IS_MADE_UP_OF", member_node)
+        rel2 = py2neo.Relationship(member_node, "IS_A_MEMBER_OF", numpy_node)
+        tx.create(rel1)
+        tx.create(rel2)
 
     # 建立仓库结点
     for repo in repos:
+
+        # 建立结点
         repo_node = py2neo.Node("REPOSITORY", **repo)
-        rel = py2neo.Relationship(numpy_node, "OWNS", repo_node)
         tx.create(repo_node)
-        tx.create(rel)
+
+        # 建立关系
+        rel1 = py2neo.Relationship(numpy_node, "OWNS", repo_node)
+        rel2 = py2neo.Relationship(repo_node, "IS_OWNED_BY", numpy_node)
+        tx.create(rel1)
+        tx.create(rel2)
 
     tx.commit()
